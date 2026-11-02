@@ -1,17 +1,17 @@
 # 한강로컬패스 구현 명세
 
-기준 2026-10-29  
+설계 갱신 기준 2026-11-02  
 문서 상태 설계안  구현 및 실제 API 인증 호출 미실시  
 방향과 착수 판단은 [PRD](PRD.md)  외부 사실과 이용권은 [API 근거](API_EVIDENCE.md)  
 
 ## 01 기존 자료 분석과 결정 상태
 
 확인 자료 README와 전체 저장소 트리  docs/ideation-worksheet.md  docs/API_EVIDENCE.md  docs/prd-auto-healing.md  references/01-practice-guide.md  references/02-worksheet-template.md  references/system-methodology.md  
-현재 README는 프로젝트명만 포함  앱 코드와 테스트 및 배포 파일 없음  
-PRD.md는 사용자 삭제 커밋 70b262a 이후 부재  이번 요청에 따라 재생성  
+초기 조사 당시 앱 코드와 테스트 및 배포 파일 없음  이 문서는 구현 완료 증거가 아닌 설계  
+현재 제품 범위는 PRD를 따르며 전통시장 먹거리 연계만 MVP에 포함  
 이전 퀴즈 PRD의 모델과 호출 횟수 및 시간 제한은 한강 서비스의 확정값으로 이관 금지  
-실습 가이드는 역할 분리와 최소 3개 장애 재현 및 제한 복구와 독립 검증을 안내  
-별도 평가표와 Kubernetes 및 커버리지 80% 강제 요건은 저장소에서 미확인  
+현재 교과목 기준은 FT-01~04 네 가지 장애를 각각 3회 이상 시험  
+Kubernetes는 사용하지 않음  복구 목표와 커버리지 수치는 PRD의 팀 합의 빈칸 유지  
 
 | 검토 항목 | 기존 누락 | 이번 설계 결론 | 상태 |
 |---|---|---|---|
@@ -34,12 +34,12 @@ PRD.md는 사용자 삭제 커밋 70b262a 이후 부재  이번 요청에 따라
 
 | 항목 | 권장 기본값 | 사용자 확인과 처리 |
 |---|---|---|
-| 출발 장소 | 여의도 선착장 입구 | 입력 화면에서 시작 지점 표시  여의도역 출발로 해석 금지 |
+| 출발과 도착 | 사용자가 지원 선착장 버튼으로 선택 | 자료가 확보된 노선만 선택 가능 |
 | 접근시간 | 경계 밖 접근 0분 | 선착장까지 이동 제외 안내  임의 출발지 P1 |
-| 전체 시간 | 180분 | 입력 시각부터 종료까지  대기와 준비 및 승선과 방문 포함 |
+| 전체 시간 | 사용자가 선택  선택 범위 팀 합의 | 입력 시각부터 종료까지  대기와 준비 및 승선과 방문 포함 |
 | 왕복과 귀가 | 편도  배편 1회  귀가 제외 | 첫 요청에 범위 동의  왕복 요구 시 미지원 응답 |
 | 인원 | 1인 | 다인은 미지원  예산을 인원으로 임의 나누지 않음 |
-| 예산 | 식비 30000원 | 승선료와 교통비 및 입장료 제외  총여행비 통과 표현 금지 |
+| 예산 | 사용자가 선택  선택 범위 팀 합의 | 승선료와 교통비 및 입장료 제외  총여행비 통과 표현 금지 |
 | 승선 준비 | 사용자 설정 15분 제안 | 개인 여행 공식 기준 미확인  확정 대기시간으로 표시 금지 |
 | 하선 준비 | 사용자 설정 5분 제안 | 평균 실측치가 아닌 계획 여유시간 |
 | 시장 체류 | 사용자 설정 30분 제안 | 장소 실제 운영시간과 구분 |
@@ -291,76 +291,77 @@ TTL을 모든 데이터에 일괄 24시간으로 정하지 않음  제공사 약
 
 ## 09 Multi-Agent와 Tool 계약
 
-최소 실제 LLM 역할 2개 제안  Planner와 Executor  별도 시스템 지시와 상태 및 도구 권한  
-Validator와 Recovery는 Python 서비스  함수 이름만 바꿔 LLM 에이전트로 주장 금지  
-LangGraph는 실행 상태와 한도 관리 후보  도입 여부 Day 1 확정  단순 직접 상태기계도 동일 계약 충족 가능  
-LLM 공급자와 모델은 미결정  Tool Calling과 JSON 스키마 지원 및 키 확보 후 선택  이전 퀴즈 모델 임의 계승 금지  
-Planner는 선호 의미 해석과 장소 조합 후보 제안에 사용  검색과 산술은 Python 담당  
-Executor는 필요한 증거 유형과 조회 도구의 선택 및 후속 누락 확인을 담당  실제 HTTP와 정규화는 Python Tool 수행  
-이 역할의 추가 호출비와 지연이 3일 범위를 초과하면 멀티 에이전트 요건 변경을 사용자와 재합의  이름만 유지하는 우회 금지  
+현재 결정  Supervisor(작업 관리자)가 흐름과 재시도 예산 및 최종 상태를 관리  
+Executor(자료 실행 담당)와 Planner(시장 코스 제안 담당) 및 Critic(결과 검증 담당)은 분리된 에이전트 역할  
+세 에이전트는 각자의 지시와 입출력 및 도구 권한을 가지며 실제 호출 기록을 남김  
+Supervisor는 규칙 기반 실행 관리이며 Recovery는 Python 복구 모듈  
+Recovery를 별도 LLM 에이전트로 집계하지 않음  
+Critic은 서버의 결정적 검증 도구를 호출해 장소 식별값과 출처 및 시각과 금액을 대조  
+모델의 설명만으로 계산과 자료 유효성을 통과시키지 않음
 
-| 구성 | 입력 Schema | 출력 Schema | 도구와 실제 작업 | 실패와 전달 |
-|---|---|---|---|---|
-| Planner prepare | TripRequest | DataRequest  날짜와 선착장 및 요구 증거 유형 | request_evidence handoff | 미지원 범위는 오류  Executor로 전달 |
-| Executor | DataRequest와 사용 가능 도구 목록 | SourceBundle  sailings와 places 및 routes와 sources | get_sailings  find_places  get_walk_route  실제 호출 로그 필수 | 오류는 Recovery  부분 결과와 missing_fields 전달 |
-| Planner propose | TripRequest와 SourceBundle | Candidate 최대2개 | submit_candidates  허용 ID와 순서만 | 모르는 ID나 직접 만든 값 거부 |
-| Validator | Request와 Candidate 및 SourceBundle | Validation과 TimelineStep | validate_candidate  06절 Python 계산 | FAIL 또는 UNKNOWN 사유를 Planner에 1회 전달 |
-| Recovery | ToolError와 retry_budget 및 source_refs | RecoveryResult  action과 result 및 verified | retry_tool  read_allowed_cache  schema_check | 한도 소진은 실패  복구 후 Validator 또는 별도 조회 확인 |
+| 구성 | 입력 | 출력과 책임 |
+|---|---|---|
+| Supervisor | 요청과 단계 결과 및 오류 | 단계 선택과 예산 승인 및 최종 상태 |
+| Executor | 선택 배편과 여행 조건 | 저장된 운항과 시장 및 장소 자료와 서버 계산값 |
+| Planner | 검증된 자료와 시장 후보 | market_id와 place_id 및 방문 순서와 추천 이유 |
+| Critic | 원천 자료와 계산값 및 후보 | 형식과 증거 및 서버 검증 도구 결과와 반려 이유 |
+| Recovery | 오류와 단계 및 Supervisor가 승인한 예산 | RETRY 또는 KEEP_VALID_REVISION 또는 STOP  실행 결과는 다시 검증 |
 
-Tool 입력과 출력 계약  서비스 운영 데이터 예시가 아닌 타입 정의  
+정상 흐름  화면 → Supervisor → Executor → Planner → Critic → Supervisor → 화면  
+오류 흐름  단계 실패 → Supervisor → Recovery → 실패 단계 재실행 → 서버 검증 및 Critic → Supervisor 종료  
+자료 갱신도 Supervisor와 Recovery를 공유하며 사용자 검색 중에는 운항 API를 호출하지 않음  
+LLM 공급자와 모델 및 실행 프레임워크는 미확정이며 역할과 계약을 먼저 고정
 
-```json
-{
-  "get_sailings": {"input": {"pier_id": "str", "date": "date"}, "output": "SailingList"},
-  "find_places": {"input": {"arrival_pier_id": "str", "kinds": "list[enum]"}, "output": "PlaceList"},
-  "get_walk_route": {"input": {"origin": "LocationRef", "destination": "LocationRef"}, "output": {"duration_seconds": "int", "distance_m": "int", "path": "list[coordinate]", "source_id": "str", "retrieved_at": "datetime"}},
-  "validate_candidate": {"input": {"request": "TripRequest", "candidate": "Candidate", "sources": "SourceBundle"}, "output": "Validation"},
-  "RecoveryResult": {"action": "RETRY|CACHE|STOP", "attempts": "int", "verified": "bool", "source_ids": "list[str]", "error_code": "str|null"}
-}
-```
+공유 상태  trace_id  incident_id  request  stage  selected_sailing_id  source_revision  evidence  candidates  validation  error_code  attempt_by_stage  planner_repair_used  deadline_at  
+Handoff(업무 전달)마다 자료 식별값과 출처 및 단계 필수 필드를 대조  
+LLM이 만든 URL이나 좌표 및 요금을 도구 실행 근거로 사용하지 않음  
+Python 검증 함수의 기존 Validator 명칭은 Critic이 사용하는 검증 도구를 뜻하며 별도 에이전트가 아님
 
-도구는 ID로 좌표를 서버에서 조회  LLM 임의 URL과 인증키 및 좌표 호출 금지  
-상태 TripState  request_id  request  stage  evidence  missing_fields  candidates  validation  errors  counters  deadline_at  
-Handoff마다 필수 필드와 source_id 대조  누락 시 다음 단계 통과 금지  
-흐름 Planner 준비 → Executor 실제 도구 → Planner 후보 → Validator → 필요 시 Planner 1회 수정 → Validator → 표시  
-규칙 검증 실패는 Recovery 대상 API 장애와 구분  재계획은 실제 확보된 배편과 장소 안에서만 수행  
+후보 최대 2개  Planner 추가 실행 최대 1회  전체 LLM 호출 최대 6회  
+외부 요청과 에이전트 시도당 10초  DB 시도당 3초  전체 40초  
+최초 실행 뒤 재시도는 1회이며 예외와 형식 오류 및 품질 수정이 같은 단계 예산을 공유  
+자세한 계약과 실패 처리는 [자동 복구 상세 설계](AUTOHEALING_DESIGN.md)를 기준으로 구현
 
-공통 한도는 검증 전 정책 제안  실측 목표로 오해 금지  
-후보 최대2개  재계획 최대1회  LLM 응답 요청 최대6회  에이전트 Tool 호출 최대8회  외부 HTTP 시도 최대10회  
-tool_calls는 Executor의 get_sailings와 find_places 및 get_walk_route 실행 수  handoff와 submit_candidates 및 내부 validate는 제외  
-서버 내부 HTTP 재시도는 tool_calls에 더하지 않고 http_attempts에 모두 포함  LLM 재시도는 model_calls에 포함  
-재시도도 HTTP 한도에 포함  Executor 모델 루프 최대3회  Planner 준비와 후보 및 수정 최대3회  
-HTTP 요청 timeout 3초  LLM 요청 8초  전체 요청 40초  외부 병렬 최대2개  
-어느 한도든 먼저 소진되면 LIMIT_EXCEEDED 또는 TIMEOUT으로 종료  늦은 응답 폐기  
-한도 내라고 모든 경로를 반드시 시도하지 않음  도보 구간 2개와 실제 후보 1개 우선  
+## 10 AutoHealing과 복구 후 검증
 
-## 10 Auto Healing과 독립 검증
+AutoHealing(장애 자동 복구)은 FastAPI 백엔드의 요청 처리 흐름과 자료 갱신 작업에 배치  
+Supervisor(작업 관리자)가 재시도 예산과 종료를 결정하고 Recovery(복구 모듈)가 허용된 동작만 실행  
+Critic(결과 검증 담당)은 복구된 자료와 추천 결과를 서버 검증 도구로 다시 확인  
+Recovery는 Python 모듈이며 별도 LLM 에이전트 수에 포함하지 않음
 
-부가 기능  외부 서비스 재시작과 임의 명령 실행 없음  테스트 환경 오류 주입만 허용  
+정상 흐름  배편 조회 → 배편 선택 → 저장된 시장 자료 조회 → Planner 시장 코스 생성 → Critic 검증 → Supervisor 결과 반환  
+오류 흐름  오류 감지 → Supervisor 복구 허용 판단 → Recovery 한 번 재시도 → 자료 및 계산 재검증 → Critic 검증 → Supervisor 성공 또는 실패 종료  
+자료 갱신 흐름  관리자가 갱신 실행 → 허용된 외부 자료 조회 → 형식과 적용일 검사 → 새 버전 저장 → 저장 자료 재조회 확인
 
-| 장애 | 감지 | 정책 제안과 폴백 | 복구 검증과 사용자 및 로그 |
+| 시점과 장애 | 감지 방법 | 자동 복구와 재시도 | 최종 처리 |
 |---|---|---|---|
-| Timeout | HTTP 3초 초과 | 동일 요청 최대1회 재시도  대기 0.5초  이후 허용된 유효 캐시 | 새 응답 스키마와 적용기간 검증  cached 표시  attempt 기록 |
-| HTTP 429 | 상태 코드 | Retry-After가 남은 기한 이내면 최대1회  아니면 중단 | 새 2xx와 내용 검증  한도 안내  제공사와 코드 기록 |
-| HTTP 5xx | 상태 코드 | 최대1회  이후 유효 캐시 | 새 응답 또는 캐시 유효성 별도 검사  DEGRADED 로그 |
-| 필드 누락과 잘못된 JSON | Pydantic과 파서 | 재시도 최대1회  지속 오류는 불완전 결과 | 필수 필드 검사 통과 전 복구 아님  missing_fields 로그 |
-| 갱신 지연과 만료 | expires_at 및 적용일 검사 | 더 최신의 사용 허용 원천만 조회  없으면 UNKNOWN | 취득 시각과 유효성 표시  stale을 최신으로 표시 금지 |
-| LLM 호출 및 형식 실패 | timeout과 schema 불일치 | 모델 요청 총한도 내 최대1회 재시도  지속 실패는 일정 생성 불가 | Validator 통과 전 성공 아님  실제 원천 자료 조회 화면 유지 |
-| DB 연결 실패 | readiness와 연결 예외 | 연결 재시도1회  권리와 유효성 확인된 메모리 스냅샷만 대안 | SELECT 1과 필요한 레코드 읽기 성공 확인  없으면 503 |
+| 자료 갱신 중 외부 응답 지연 FT-01 | 외부 연결이 10초를 넘으면 취소하고 SOURCE_TIMEOUT 기록 | 1초 대기 후 같은 조회를 한 번 재시도  두 번째도 실패하면 이전 버전의 권한과 적용기간 및 만료시각 검사 | 유효 버전은 확인 시각을 표시해 계속 제공  만료되거나 유효성 미확인은 확인 필요로 표시하고 배편 선택 차단  기존 버전을 최신으로 덮어쓰지 않음 |
+| 시장 코스 생성 중 에이전트 예외 FT-02 | 실행 래퍼가 실행 예외 또는 10초 초과를 잡고 단계와 오류 코드 기록 | Supervisor가 이전 단계의 검증된 입력으로 실패 단계만 한 번 재실행  불완전 결과는 폐기 | 재실패하면 해당 단계 종료  검증되지 않은 시장 코스는 반환하지 않음 |
+| 배편 또는 시장 조회 및 갱신 저장 중 DB 오류 FT-03 | 연결 예외와 3초 조회 제한 초과를 포착  빈 조회 결과와 연결 장애를 구분 | 실패 연결을 닫고 1초 뒤 새 연결로 원래 읽기 또는 트랜잭션을 한 번 재시도  저장은 갱신 작업 ID로 중복 방지 | 재실패하면 해당 기능에 503과 DB_UNAVAILABLE 반환  임의 자료나 검증 안 된 메모리 자료로 대체하지 않음  갱신은 롤백하고 이전 버전 유지 |
+| Planner가 코스를 반환하는 순간 형식 오류 FT-04 | JSON 파싱과 Pydantic(데이터 형식 검사)에서 필수 필드와 자료 식별값 및 출처 누락 감지 | Recovery가 오류 목록과 허용 장소 목록으로 Planner에 한 번 수정 요청 | 재실패하면 COURSE_INVALID로 종료  형식이 맞아도 Critic 검증 전에는 성공 아님 |
+| Critic이 장소와 금액 및 시간을 검증하는 순간 품질 오류 | 미등록 장소와 출처 불일치 및 서버 계산값 차이를 검증 도구로 비교 | Planner 수정 예산이 남았으면 한 번 수정하고 다시 검증 | FT-04 수정과 품질 수정은 같은 예산 공유  모두 합쳐 수정은 한 번  모르는 가격이나 시간은 UNKNOWN으로 표시 |
 
-동일 의존성 연속 실패 3회면 30초 회로 열림 제안  새 자동 호출 중단  냉각 후 한 프로브만 허용  
-제공사 정상화 확인과 사용자에게 캐시 제공 성공은 별도 기록  
-복구 수행 결과의 성공 플래그만 신뢰 금지  별도 schema와 유효기간 검사 및 새 기능 요청으로 검증  
-가이드용 장애 실험 최소3종 Timeout과 JSON 누락 및 DB 연결 실패  지속 실패 종료도 별도 확인  
-JSON 로그 필드 request_id  incident_id  stage  dependency  error_code  attempt  source_ids  injected_at  detected_at  recovery_started_at  verified_at  final_status  latency_ms  cache_used  verification_kind  
-LLM 호출수와 도구 호출수 및 토큰 사용량 기록  API 키와 DB 비밀번호 및 사용자 입력 원문 제외  
-로그 보존 7일 제안  로컬 회전 로그와 운영 플랫폼 retention 별도 설정  
-복구율과 MTTD 및 MTTR은 12절 정의 적용  현재 측정 없음  
+외부 API는 사용자 배편 검색마다 호출하지 않고 허용된 자료 갱신에 사용  
+공식 API를 확보하지 못한 경우 허용 파일 반영을 사용하며 FT-01은 외부 연결 경계의 모의 시험이라고 명시  
+외부 경로 API의 실제 사용과 권한은 미확정이며 확보 전에는 실시간 도보 조회가 구현됐다고 표시하지 않음  
+잘못된 사용자 입력과 배편 없음 및 자료 권한 불허는 재시도하지 않고 각각 입력 수정 또는 결과 없음 또는 확인 필요로 종료  
+자세한 실행 순서와 시험 방법 및 기록 항목은 [자동 복구 상세 설계](AUTOHEALING_DESIGN.md) 참고
+
+배편 조회 성공 뒤 시장 코스 생성이 실패하면 검증된 배편과 요금은 유지하고 시장 코스 영역만 이용 불가로 표시  
+배편 유지도 자료의 권한과 적용기간이 유효한 경우에만 허용  
+갱신 실패 뒤 이전 유효 자료를 제공한 경우는 자료 갱신 복구와 구분해 기록  
+복구율에는 모든 필수 장애 시험을 포함하며 PARTIAL과 유효성 미확인은 전체 코스 복구 성공으로 세지 않음
+
+
+MVP에서는 연속 실패 회로 차단과 메모리 스냅샷 폴백을 추가하지 않음  
+정해진 재시도와 안전 종료를 먼저 완성하고 선택 확장은 필수 시험 이후 검토  
+실제 운영 장애도 같은 정책으로 처리하며 장애 주입 기능만 시험 환경에 제한  
+[자동 복구 상세 설계](AUTOHEALING_DESIGN.md)에 단계별 오류 코드와 실행 순서 및 재현 시험과 알림 책임 명시
 
 ## 11 배포와 CI
 
 개발 Docker Compose 구성 frontend와 api 및 postgres  postgres named volume 사용 제안  
-운영 배포 대상 미결정  팀 제공 단일 Docker 호스트 권장  Compose는 다중 서버 가용성 보장 수단 아님  
+운영 배포 대상 EC2  Docker Compose로 실행  Compose는 다중 서버 가용성 보장 수단 아님  
 운영 DB는 호스트 지속 볼륨과 백업 또는 외부 관리 DB 중 접근 가능한 방안 Day 1 선택  임시 컨테이너 파일시스템에만 저장 금지  
 환경변수 SEOUL_API_KEY  KAKAO_REST_KEY  LLM_API_KEY  DATABASE_URL  TOKEN_SIGNING_SECRET  
 키값은 저장소에 넣지 않음  GitHub Actions에서 필요한 live job 키만 GitHub Secrets 사용  
@@ -387,12 +388,12 @@ fixture와 장애 주입은 자동화 테스트 전용  화면 서비스 응답�
 | T08 경로 실패 | 필수 구간 API 실패 | 시간 UNKNOWN  임의 속도와 직선 추정 없음 | F03 F05 F07  주입 |
 | T09 API 장애와 캐시 만료 | timeout  5xx  429  malformed  expired | 한도 준수  새 검증 또는 종료  최신 표시 금지 | F07  주입 |
 | T10 존재하지 않는 LLM 장소 | 미등록 ID와 임의 가격 | 후보 거부  1회 수정 이후 종료 | F04 F05  자동 |
-| T11 반복 한도 | 재계획2회 또는 HTTP11번째 시도 요청 | LIMIT_EXCEEDED  추가 호출0건 | F04 F07  자동 |
-| T12 DB 실패와 회로 | 연결실패3회와 지속 장애 | 회로 열림  유효 스냅샷 또는503  재시도 종료 | F07  주입 |
+| T11 반복 한도 | Planner 추가 실행 2회 또는 전체 기한 40초 초과 요청 | 한도 초과 뒤 추가 실행 0건  늦은 결과 폐기 | F04 F07  자동 |
+| T12 DB 실패 | 첫 연결과 새 연결 모두 실패 | 재시도 1회 후 503  시장 단계면 배편 유지 | F07  주입 |
 | T13 실제 데이터와 권리 | 대상 날짜 원천과 허용서 및 키 | HTTP와 사용 필드 및 기간 대조 증거 확보 | A와 B  수동 및 통합 |
 | T14 화면 통합 | S01~S07 실제 또는 테스트 fixture 경로 | 입력과 timeline 및 지도와 오류 UI 표시  키 노출 없음 | F01 F06  통합 |
 
-Day 3 표본 제안  대표 정상 요청5개와 불가 및 미확인 요청 각1개 이상  장애3종 각3회  
+Day 3 표본 제안  대표 정상 요청5개와 불가 및 미확인 요청 각1개 이상  필수 장애4종 각3회  
 통계적 신뢰 표본이 아닌 시연 표본  실제 가능한 정상 요청이 없으면 정상 완료로 포장 금지  
 
 | 지표 | 산식과 분모 | 수용 기준 |
@@ -400,7 +401,8 @@ Day 3 표본 제안  대표 정상 요청5개와 불가 및 미확인 요청 각
 | 실제 조회 성공률 | 스키마와 필수필드 및 유효기간 검사 통과 실제 HTTP 조회 / 전체 실제 조회 시도 | 결과 수와 실패 원인 보고  목표 미정 |
 | 유효 일정 생성률 | VALIDATED_PLANNED 반환 / 유효 입력 요청 | 불가와 확인필요 및 의존성 실패도 분모 포함  목표 미정 |
 | 검증 통과율 | 필수 항목 전부 PASS 후보 / 검증 후보 | UNKNOWN을 PASS로 계산 금지 |
-| API 장애 복구율 | 새 정상 응답과 독립 검증 성공 장애 / 전체 주입 장애 | 캐시 제공은 별도 폴백 성공률로 보고 |
+| API 원천 정상화율 | 새 정상 응답과 독립 검증 성공 장애 / 전체 주입 장애 | 캐시 제공은 별도 폴백 성공률로 보고 |
+| 전체 자동 복구율 | 전체 필수 장애에서 사람 개입 없이 원래 기능 검증을 통과한 건 / 전체 필수 장애 시험 건 | PARTIAL과 만료 자료는 성공 제외  목표 미정 |
 | 폴백 성공률 | 사용 허용 및 유효 캐시로 제한 결과 반환 / 전체 주입 장애 | 제공사 정상화와 구분 |
 | 평균 응답시간 | 요청 수신부터 성공 또는 실패까지 경과 합 / 전체 유효 요청 | 실패와 timeout 포함  평균과 최대 및 표본수 표시 |
 | MTTD | detected_at - injected_at 평균 | 미탐지 건수 별도  시각은 동일 호스트 기준 |
@@ -423,11 +425,11 @@ Day 1 시작 시 아래 범위와 설정값 사용자 확인  확인 전에는 �
 | D2 A | 조회 어댑터와 출처 및 갱신 | D1 사용 허용 원천 | 실제 결과를 B에 전달  점심 통합 |
 | D2 B | 시간과 예산 및 영업 검증 | A 근거와 경로 | T03~T07 단위 검증  오후 통합 |
 | D2 C | 지도와 장소 및 타임라인 | F05 응답 | S01~S05 상태 표시  오후 통합 |
-| D2 D | 실제 도구와 두 에이전트 연결 | A 어댑터와 B Validator | 재계획1회와 한도 종료  저녁 전체 정상 경로 통합 |
+| D2 D | 실제 도구와 Executor 및 Planner와 Critic 연결 | A 어댑터와 B Validator | 재계획1회와 한도 종료  저녁 전체 정상 경로 통합 |
 | D3 A | 실제 연결과 장애 근거 | 데이터 최신성 재확인 | 정상과 미검증 상태 기록  오전 merge |
 | D3 B | pytest와 API 통합 및 복구 | F07 정책 | 정상과 오류 및 한도 확인  오전 merge |
 | D3 C | Docker UI와 통합 배포 | CI와 호스트 및 도메인 | live와 ready 및 결과 화면 점검  오후 배포 |
-| D3 D | 장애3종 실험과 시연 로그 | 통합 환경 | MTTD와 MTTR 및 실제 일정 시연  종료 전 release |
+| D3 D | 필수 장애4종 실험과 시연 로그 | 통합 환경 | MTTD와 MTTR 및 실제 일정 시연  종료 전 release |
 
 계약 확정 후 B와 C와 D 병렬 개발 가능  A의 데이터 권리와 실제 필드는 일정 완성의 선행조건  
 기능 브랜치별 짧은 PR  계약 변경은 B 책임으로 C와 D 동시 반영  코드 작업은 이번 요청 밖  
@@ -451,7 +453,7 @@ Go의 운영 확인 증거는 대상 날짜와 운항편에 대한 운영사 또
 자동 실시간 API를 새 P0로 추가하는 조건 아님  수동 공식 확인만 가능하면 그 시점의 확인으로 표시  이후 결항과 잔여좌석 보장 금지  
 이 증거 없이 공식 예정표만 검증한 MVP는 Conditional Go로 시연 가능  정상 일정1건도 예정 기준이라고 표시  
 
-필수 미결정  시간표 권리와 최신 적용일  영업과 메뉴 데이터의 실제 범위  LLM 계정과 모델  지도 저장조건  운영 호스트  휴일 분류 원천  
+필수 미결정  시간표 권리와 최신 적용일  영업과 메뉴 데이터의 실제 범위  LLM 계정과 모델  지도 저장조건  운영 DB 배치  휴일 분류 원천  
 설계 확인 필요  출발 경계와 귀가 제외  준비와 체류 기본값  호출 한도와 TTL 및 목표 지표  
 최대 위험3개  운항자료 권한과 개정  방문지 근거 품질  3일 연동 작업량  
 현재 성공확률 수치 산정 근거 없음  Day 1 선행조건 충족 시 한 구간 MVP 가능성 있음
